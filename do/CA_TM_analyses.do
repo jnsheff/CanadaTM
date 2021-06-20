@@ -28,6 +28,49 @@
 	
 	save /Volumes/TMData/Canada/analyses/CA_TM_cohorts.dta, replace
 	
+* create cumulative table of active registrations
+
+	use /Volumes/TMData/Canada/dta/CA_TM_main.dta, clear
+	
+	keep if (!missing(RegNo) | !missing(RegDate))
+	
+	* Approximate registration date for 174 registrations without date information
+	
+	replace RegDate = AllowDate if missing(RegDate)
+	replace RegDate = PubDate if missing(RegDate)
+	replace RegDate = AppDate if missing(RegDate)
+	
+	* Calculate cumulative registrations by year
+	
+	gen reg_year_group = yofd(RegDate) //creates a new variable coding each observation into yearly cohorts by registration date, to be used to generate a frequency time-series
+	format %tyCCYY reg_year_group //formats the new yearly cohort variable.
+	
+	gen term_year_group = yofd(TermDate) //creates a new variable coding each observation into yearly cohorts by termination date, to be used to generate a frequency time-series
+	format %tyCCYY term_year_group //formats the new yearly cohort variable.
+	
+	preserve
+	
+	contract term_year_group, freq(terminated) cfreq(totalTerminated)
+	rename term_year_group year_group
+	
+	save /Volumes/TMData/Canada/analyses/cumulative_registrations.dta, replace
+	
+	restore
+	
+	contract reg_year_group, freq(registered) cfreq(totalRegistered)
+	rename reg_year_group year_group
+	
+	* Calculate cumulative expungements by year
+	
+	merge 1:1 year_group using /Volumes/TMData/Canada/analyses/cumulative_registrations.dta, nogen
+	drop if year_group == .
+	replace terminated = 0 if missing(terminated)
+	replace totalTerminated = 0 if missing(totalTerminated)
+	gen netRegistered = totalRegistered - totalTerminated
+	sort year_group
+	format %tyCCYY year_group
+	save /Volumes/TMData/Canada/analyses/cumulative_registrations.dta, replace 
+	
 * Generate pendency lag calculations for events of interest
 
 	use /Volumes/TMData/Canada/dta/CA_TM_allevents.dta, clear
@@ -191,6 +234,11 @@
 		save /Volumes/TMData/Canada/analyses/CA_TM_`y'ly_timeseries, replace
 		restore
 		}
+		
+	use /Volumes/TMData/Canada/analyses/CA_TM_yearly_timeseries, clear
+	merge 1:1 year_group using /Volumes/TMData/Canada/analyses/cumulative_registrations.dta, keepusing(netRegistered) nogen // add cumulative registration counts to yearly timeseries data
+	sort year_group
+	save /Volumes/TMData/Canada/analyses/CA_TM_yearly_timeseries, replace
 
 * generate daily application, Nice Class, Applicant, and attorney data for June 2019
 
@@ -335,12 +383,12 @@
 	use /Volumes/TMData/Canada/dta/CA_TM_main.dta, clear
 	merge 1:1 AppNo ExtNo using /Volumes/TMData/Canada/analyses/CA_TM_cohorts.dta, nogen
 	preserve
-	collapse (sum) ForeignAppBasis ForeignRegBasis UseBasis ITUBasis NoBasis, by (year_group)
+	collapse (sum) ForeignAppBasis ForeignRegBasis UseBasis ITUBasis, by (year_group)
 	tsset year_group
 	save /Volumes/TMData/Canada/analyses/CA_TM_basis_counts.dta, replace
 	restore
-	collapse (mean) ForeignAppBasis ForeignRegBasis UseBasis ITUBasis NoBasis, by (year_group)
-	foreach x in ForeignAppBasis ForeignRegBasis UseBasis ITUBasis NoBasis {
+	collapse (mean) ForeignAppBasis ForeignRegBasis UseBasis ITUBasis, by (year_group)
+	foreach x in ForeignAppBasis ForeignRegBasis UseBasis ITUBasis {
 		replace `x' = `x' * 100
 		}
 	tsset year_group
@@ -430,6 +478,7 @@
 	save /Volumes/TMData/Canada/analyses/CA_TM_filer_nationalities.dta, replace
 	
 	* Create yearly country and province panels from individual application records
+		use /Volumes/TMData/Canada/analyses/CA_TM_filer_nationalities.dta, clear
 		by year_group Country, sort: gen Country_count = [_N]
 		by year_group Province, sort: gen Province_count = [_N] if Country == "CA"
 		preserve
@@ -445,40 +494,50 @@
 		xtset Province year_group
 		save /Volumes/TMData/Canada/analyses/CA_TM_province_app_panels.dta, replace
 	
-	* Create summary yearly country panels with top 5 countries and all others added together, for graphing clarity
+	* Identify countries in top 5 applicant totals in any year (excluding Canada and US),
+	* Calculate application totals from each country in each year
+	
 		use /Volumes/TMData/Canada/analyses/CA_TM_country_app_panels.dta, clear
 		sort year_group Country_count
-		keep if year_group > 1978
+		keep if year_group > 1977
 		drop if missing(year_group)
-		by year_group: gen other_count = sum(Country_count)
-		by year_group: replace other_count = 0 if [_n] > ([_N]-5)
+		gen keepit = 0
+		by year_group: replace keepit = 1 if [_n] > ([_N]-7)
+		sort Country
+		egen keep = max(keepit), by(Country)
+		drop keepit
+		sort year_group keep Country_count
+		by year_group: gen other_count = sum(Country_count) if keep == 0
 		egen other = max(other_count), by(year_group)
-		replace ctry = . if other == other_count
-		by year_group: keep if [_n] > ([_N]-6)
+		replace other = . if keep == 1
+		replace ctry = . if keep == 0
+		replace Country_count = other if keep == 0
+		replace Country = "Other" if keep == 0
+		keep year_group Country ctry Country_count
 		order year_group ctry Country_count
-		keep year_group ctry Country_count
-		rename ctry Country
+		duplicates drop
 		rename Country_count Applications
-		xtset Country year_group
+		xtset ctry year_group
 		sort year_group Applications
 		save /Volumes/TMData/Canada/analyses/CA_TM_country_app_yearly_summary.dta, replace
 		
 	* Reshape for better bar chart presentation
 		use /Volumes/TMData/Canada/analyses/CA_TM_country_app_yearly_summary.dta, clear
-		decode Country, gen(country)
-		drop(Country)
-		replace country = "Other" if missing(country)
-		reshape wide Applications, i(year_group) j(country, string)
-		foreach x in CA CH CN DE FR GB JP Other US {
+		drop ctry
+		reshape wide Applications, i(year_group) j(Country, string)
+		foreach x in CA US CN IT JP CH GB DE FR Other {
 			rename Applications`x' `x'
+			replace `x' = 0 if `x' == .
 			label variable `x'
 			}
+		order year_group CA US CN IT JP CH GB DE FR Other
+		gen Non_CA_US_Combined = (CN+IT+JP+CH+GB+DE+FR+Other)
 		save /Volumes/TMData/Canada/analyses/CA_TM_country_barchart_data.dta, replace
 		
 	* Create summary yearly province panels grouping less populated provinces by region, for graphing clarity
 		use /Volumes/TMData/Canada/analyses/CA_TM_province_app_panels.dta, clear
 		sort year_group Province_count
-		keep if year_group > 1978
+		keep if year_group > 1977
 		drop if missing(year_group)
 				
 		* Generate regional grouping for less populous provinces, calculate application totals by region
@@ -522,13 +581,13 @@
 	* Foreign Priority and Foreign Claim Analysis
 		use /Volumes/TMData/Canada/dta/CA_TM_claims.dta, clear
 		keep if !missing(Country)
-		keep if Country != "XX"
+		keep if Country != "XX" // comment out to include claims from unknown countries
 		keep AppNo ExtNo Country
 		duplicates drop
 		save /Volumes/TMData/Canada/analyses/CA_TM_claim_countries.dta, replace
 		use /Volumes/TMData/Canada/dta/CA_TM_priority.dta, clear
 		keep if !missing(PriorityCountry)
-		keep if PriorityCountry != "XX"
+		keep if PriorityCountry != "XX" // comment out to include claims from unknown countries
 		keep AppNo ExtNo PriorityCountry
 		rename PriorityCountry Country
 		save /Volumes/TMData/Canada/analyses/CA_TM_priority_countries.dta, replace
@@ -545,19 +604,29 @@
 			order year_group Country Applications
 			sort year_group Applications
 			save /Volumes/TMData/Canada/analyses/CA_TM_priority_claim_panel.dta, replace
-			keep if year_group > 1978
-			by year_group: gen CumulativeApplications = sum(Applications)
-			by year_group: replace CumulativeApplications = 0 if [_n] > ([_N]-5)
-			egen lowrank = max(CumulativeApplications), by(year_group)
-			replace Country = "Other" if CumulativeApplications == lowrank
-			replace Applications = lowrank if Country == "Other"
-			by year_group: keep if [_n] > ([_N]-6)
+			keep if year_group > 1977
+			gen keepit = 0
+			by year_group: replace keepit = 1 if [_n] > ([_N]-5)
+			sort Country
+			egen keep = max(keepit), by(Country)
+			drop keepit
+			sort year_group keep Applications
+			by year_group: gen other_count = sum(Applications) if keep == 0
+			egen other = max(other_count), by(year_group)
+			replace other = . if keep == 1
+			replace Applications = other if keep == 0
+			replace Country = "Other" if keep == 0
 			keep year_group Country Applications
+			order year_group Country Applications
+			duplicates drop
+			drop if missing(year_group)
 			reshape wide Applications, i(year_group) j(Country, string)
 				foreach x in AU CH DE EM ES FR GB IT Other US {
 					rename Applications`x' `x'
 					label variable `x'
+					replace `x' = 0 if missing(`x')
 					}
+			gen All_But_US = AU+CH+DE+EM+ES+FR+GB+IT+Other
 			tsset year_group
 			save /Volumes/TMData/Canada/analyses/CA_TM_filed_countries_barchart_data.dta, replace
 		

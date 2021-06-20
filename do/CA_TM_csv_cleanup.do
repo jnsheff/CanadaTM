@@ -14,14 +14,14 @@
 		case(preserve) stringcols(1 2 5 6) encoding(UTF-8)clear
 		
 	* Encode string dates as datetime variables
-	foreach var in StatusDate AppDate PubDate AllowDate AbanDate RegDate RenewedDate TermDate {
+	foreach var in StatusDate AppDate PubDate AllowDate AbanDate RegDate RenewedDate TermDate{
 		gen double tcode_`var' = date(`var', "YMD")
 		format tcode_`var' %tdDD_Mon_CCYY
 		order tcode_`var', after(`var')
 		drop `var'
 		rename tcode_`var' `var'
 		}
-	foreach var in CurrStatus MarkType {
+	foreach var in CurrStatus MarkType AppLanguage {
 		encode `var', gen(`var'_code)
 		order `var'_code, after(`var')
 		drop `var'
