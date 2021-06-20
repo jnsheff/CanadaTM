@@ -3,7 +3,8 @@
 # Original code (c) Jeremy Sheff 2020. Original code published by the author under a CC-BY-4.0 license.
 # https://creativecommons.org/licenses/by/4.0/legalcode
 
-# This script downloads and extracts the 2019 historic trademark applications 
+# This script prepares the user's python environment to run the installer, 
+# then downloads and extracts the 2019 historic trademark applications
 # bulk data release from CIPO's IP Horizons SFTP server.
 # The user must provide their own SFTP credentials.
 # The user may also need to directly connect to the SFTP server 
@@ -12,9 +13,21 @@
 # XML parsers can be run on the files extracted and processed  
 # by this script to generate research-ready CSV files.
 
+import sys
+import subprocess
+
+# implement pip as a subprocess to install needed nonstandard libraries:
+print('Installing needed nonstandard python libraries...')
+subprocess.check_call([sys.executable, '-m', 'pip', 'install',
+'pysftp', 'tqdm', 'lxml', 'regex'])
+# process output with an API in the subprocess module:
+reqs = subprocess.check_output([sys.executable, '-m', 'pip',
+'freeze'])
+installed_packages = [r.decode().split('==')[0] for r in reqs.split()]
+print(f'\nCurrently installed packages are {installed_packages}\n')
+
 import pysftp
 import getpass
-import sys
 from pathlib import Path
 import os
 from zipfile import ZipFile

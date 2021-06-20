@@ -58,12 +58,12 @@ def main():
         'ForeignRegBasis': etree.XPath('.//tmk:BasisForeignRegistrationIndicator/text()', namespaces = ns_dict, smart_strings=False),
         'UseBasis':     etree.XPath('.//tmk:BasisUseIndicator/text()', namespaces = ns_dict, smart_strings=False),
         'ITUBasis':     etree.XPath('.//tmk:BasisIntentToUseIndicator/text()', namespaces = ns_dict, smart_strings=False),
-        'NoBasis':      etree.XPath('.//tmk:NoBasisIndicator/text()', namespaces = ns_dict, smart_strings=False),
         'UseEvid':      etree.XPath('.//tmk:UseRightIndicator/text()', namespaces = ns_dict, smart_strings=False),
         'NonUse':       etree.XPath('.//tmk:NonUseCancelledIndicator/text()', namespaces = ns_dict, smart_strings=False),
         'Disclaimer':   etree.XPath('.//tmk:MarkDisclaimerText/text()', namespaces = ns_dict, smart_strings=False),
         'Restriction':  etree.XPath('.//tmk:UseLimitationText/text()', namespaces = ns_dict, smart_strings=False),
         'OwnerName':    etree.XPath('.//tmk:ApplicantBag/tmk:Applicant/com:LegalEntityName/text()', namespaces = ns_dict, smart_strings=False),
+        'AppLanguage':  etree.XPath('.//com:ApplicationLanguageCode/text()', namespaces = ns_dict, smart_strings=False),
         'Section9Code': etree.XPath('.//catmk:Section9Code/text()', namespaces = ns_dict, smart_strings=False),
         'Section9Desc': False,
         'GICode':       etree.XPath('.//catmk:GeographicalIndicationKindCategory/cacom:CategoryCode/text()', namespaces = ns_dict, smart_strings=False),
@@ -71,7 +71,7 @@ def main():
         }
     
     # identify fields for which only indicator variables are sought in this dataset
-    booleanList = ['Disclaimer', 'Oppn', 'Canceln', 'Doubtful', 'Restriction', 'NoBasis']
+    booleanList = ['Disclaimer', 'Oppn', 'Canceln', 'Doubtful', 'Restriction']
 
     # create dictionary mapping Section 9 paragraph descriptors to codes
 
